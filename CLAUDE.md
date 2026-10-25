@@ -1,3 +1,31 @@
+# CLAUDE.md — SD Bench homebrew (Retro-Go SD)
+
+This repo is ONE GWHB homebrew: SD Bench, an SD card speed test for the
+Game & Watch, built from retro-go-sd-templates. The second part of this file
+is the SDK's generic porting guide.
+
+## Project notes
+
+- Target: Retro-Go SD v2.0.0-rc1+ (ABI v2), `/homebrews/SDBench.bin`.
+- `src/main.c`: three screens (home, running, results) drawn every frame
+  into the active LCD buffer with `src/gfx.c` (RGB565, own anti-aliased
+  fonts in `src/font_data.h` from `tools/make_font.py`, DejaVu Sans).
+  No libm beyond the firmware's (gfx.c has its own floor/abs).
+- Tests use the ABI stdio (fopen/fread/fwrite/fseek/fclose/remove) on
+  `RG_STORAGE_ROOT "/sdbench.tmp"` (32 MB) and `/sdbench_files/`; results
+  appended to `/sdbench.txt` (time() + localtime()). Timing: DWT cycle
+  counter / `get_SystemCoreClock()` (`time_us()`, call at least every 15 s);
+  only the file calls are timed, not the drawing. One chart sample per
+  1/128 of a test (`step()`), which also redraws and reads B (cancel).
+- The pause menu (`common_emu_input_loop`) runs only on the home and
+  results screens; audio is kept running with silence (buffers cleared
+  before the tests, which do not feed it).
+- PC build: `make host`; files in `./host_sd`; `SDB_AUTOSTART=1` runs the
+  tests once and quits, `SDB_SHOTS=dir` (+ `SDB_SHOT_EVERY=n`) saves PPM
+  screens, `GW_LANG=fr` French (host/host_i18n.c).
+
+---
+
 # CLAUDE.md — Porting an emulator core (Retro-Go SD)
 
 This repository is a **single-project** template for a Game & Watch

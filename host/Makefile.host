@@ -15,7 +15,7 @@ HOST_CC    ?= cc
 HOST_BUILD_DIR := build/host/$(PROJECT_KIND)_sdl$(HOST_SDL)
 
 ifeq ($(PROJECT_KIND),homebrew)
-HOST_BIN := ExampleHB_host
+HOST_BIN := SDBench_host
 else
 HOST_BIN := $(CORE_NAME)_host
 endif
@@ -95,7 +95,7 @@ $(HOST_BUILD_DIR)/host/%.o: host/%.c
 
 host_clean:
 	$(V)rm -rf build/host
-	$(V)rm -f $(CORE_NAME)_host ExampleHB_host
+	$(V)rm -f $(CORE_NAME)_host SDBench_host
 
 clean:: host_clean
 
