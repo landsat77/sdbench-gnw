@@ -1,6 +1,6 @@
 # SD Bench — SD card speed test for Game & Watch Retro-Go SD
 
-![SD Bench](docs/screens.png)
+<img width="2880" height="2160" alt="image" src="https://github.com/user-attachments/assets/71228a94-7be5-431c-953a-879a7858d6af" />
 
 A homebrew for the Nintendo Game & Watch (Zelda or Mario) with the
 [Retro-Go SD](https://github.com/sylverb/game-and-watch-retro-go-sd)
