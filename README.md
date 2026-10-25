@@ -38,17 +38,23 @@ and French).
   not counted.
 - **B** cancels at any time. The test files (`/sdbench.tmp`,
   `/sdbench_files/`) are always deleted at the end.
-- The results are appended to **`/sdbench.txt`** on the card, with the date,
-  to compare cards. Its format (the numbers here are only an example):
+- The results are appended to **`/sdbench.txt`** on the card, with the date
+  and the card (maker, product name, manufacturing date, capacity, file
+  system, free space), to compare cards. The maker comes from the card's
+  manufacturer ID (an unofficial list; unknown IDs are written as numbers).
+  The card identity can only be read when the card is wired to SPI1 (the
+  usual SD mod); the size always comes from the file system. Its format (the numbers here are only an example):
 
 ```
-SD Bench v1.0.0 - 2026-10-25 16:21
-  Sequential write 64 KB           x.xx MB/s
-  Sequential read 64 KB            x.xx MB/s
-  Sequential read 512 B            x.xx MB/s
-  Random read 4 KB                  xxx IOPS    x.xx MB/s    x.xx ms
-  Random write 4 KB                 xxx IOPS    x.xx MB/s    x.xx ms
-  Small files (create+4 KB)        xx.x files/s  x.xx MB/s
+SD Bench v1.1.0 - 2026-10-25 17:00
+  Card: SanDisk SN32G (MID 0x03, OEM SD, rev 8.0, 2023-05, S/N 1234ABCD)
+  Size: card 31.91 GB, exFAT volume 31.90 GB, free 12.35 GB
+  Sequential write 64 KB           0.30 MB/s
+  Sequential read 64 KB            1.35 MB/s
+  Sequential read 512 B            1.44 MB/s
+  Random read 4 KB                  331 IOPS    1.29 MB/s    3.02 ms
+  Random write 4 KB                  31 IOPS    0.12 MB/s   32.70 ms
+  Small files (create+4 KB)        13.6 files/s    0.05 MB/s
 ```
 
 Controls: **A** start / start again, **B** cancel / back, **PAUSE/SET**

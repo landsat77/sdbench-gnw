@@ -17,6 +17,15 @@ is the SDK's generic porting guide.
   counter / `get_SystemCoreClock()` (`time_us()`, call at least every 15 s);
   only the file calls are timed, not the drawing. One chart sample per
   1/128 of a test (`step()`), which also redraws and reads B (cancel).
+- Card info (`src/sdinfo.c`): not on the ABI. CID/CSD (CMD10/CMD9) are
+  sent on SPI1 directly, copying the firmware's register-level `spi_xfer`
+  (user_diskio_spi.c; CS = PB9, CRC-7 on commands, CMD59 is on), only if
+  SPI1 is clocked, master, idle and CS high, and only while no file is
+  open (startup and before writing the log). Volume size / free space from
+  `f_opendir()` -> `DIR.obj.fs` (FATFS). `SDB_FAKE_CARD=1` on the PC build.
+- The firmware's printf has no floating point: format numbers with `num()`.
+- `lcd_swap()` takes effect at the next vblank: wait for
+  `!lcd_is_swap_pending()` before drawing (`background()`).
 - The pause menu (`common_emu_input_loop`) runs only on the home and
   results screens; audio is kept running with silence (buffers cleared
   before the tests, which do not feed it).

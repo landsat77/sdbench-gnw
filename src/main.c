@@ -49,12 +49,13 @@ uint32_t get_SystemCoreClock(void);
 #endif
 
 #include "gfx.h"
+#include "sdinfo.h"
 
 #define APP_ID APPID_HOMEBREW
 #define FPS 60
 #define SAMPLE_RATE 16000
 #define AUDIO_LENGTH (SAMPLE_RATE / FPS)
-#define VERSION_TEXT "v1.0.1"
+#define VERSION_TEXT "v1.1.0"
 
 #ifdef HOST_BUILD
 #define ROOT "host_sd"
@@ -109,6 +110,7 @@ T(t_err_full, "Card full or write error", "Carte pleine ou erreur d'écriture");
 T(t_err_read, "Read error", "Erreur de lecture");
 T(t_err_files, "Cannot create the small files", "Impossible de créer les petits fichiers");
 T(t_mbs, "MB/s", "Mo/s");
+T(t_gb, "GB", "Go");
 T(t_files_s, "files/s", "fichiers/s");
 T(t_iops, "IOPS", "IOPS");
 T(t_wait, "Deleting the test files...", "Suppression des fichiers de test...");
@@ -158,6 +160,7 @@ typedef struct {
 
 static result_t results[TEST_COUNT];
 static bool have_results, results_saved;
+static sd_info_t card;
 
 /* --- buffers --- */
 
@@ -260,7 +263,7 @@ static int hint(int x, int y, const char *key, const char *label)
 }
 
 /* "12.34": the firmware's printf has no floating point (%f prints nothing). */
-typedef struct { char s[16]; } num_t;
+typedef struct { char s[24]; } num_t;
 
 static num_t num(double v, int decimals)
 {
@@ -282,6 +285,26 @@ static void format_value(char *s, size_t n, const result_t *r, unit_t unit)
 	if (unit == UNIT_MBS) snprintf(s, n, "%s %s", num(r->mbs, 2).s, gw_i18n(t_mbs));
 	else if (unit == UNIT_IOPS) snprintf(s, n, "%s %s", num(r->ops, 0).s, gw_i18n(t_iops));
 	else snprintf(s, n, "%s %s", num(r->ops, 1).s, gw_i18n(t_files_s));
+}
+
+/* "SanDisk SN32G · 31.9 GB · exFAT" (what is known of it), "" if nothing. */
+static void card_line(char *s, size_t n)
+{
+	s[0] = 0;
+	if (card.have_cid) {
+		const char *maker = sd_info_maker(card.mid);
+		if (maker) snprintf(s, n, "%s %s", maker, card.pnm);
+		else snprintf(s, n, "MID %02X %s", card.mid, card.pnm);
+	}
+	uint64_t size = card.have_csd ? card.card_bytes : card.have_volume ? card.volume_bytes : 0;
+	if (size) {
+		size_t l = strlen(s);
+		snprintf(s + l, n - l, "%s%s %s", l ? " · " : "", num(size / 1e9, size < 10e9 ? 2 : 1).s, gw_i18n(t_gb));
+	}
+	if (card.have_volume) {
+		size_t l = strlen(s);
+		snprintf(s + l, n - l, "%s%s", l ? " · " : "", sd_info_fs_name(card.fs_type));
+	}
 }
 
 /* A rounded "nice" maximum for a chart axis. */
@@ -309,7 +332,7 @@ static void chart(int x, int y, int w, int h, const result_t *r, int total, uint
 		if (r->samples[i] > top) top = r->samples[i];
 	top = nice_max(top * 1.1f);
 
-	char label[16];
+	char label[32];
 	for (int g = 0; g <= 4; g++) {
 		int gy = py + ph - ph * g / 4;
 		gfx_dotted_hline(px, gy, pw, C_FAINT, 200);
@@ -397,7 +420,9 @@ static void draw_home(void)
 {
 	background();
 	header(VERSION_TEXT);
-	gfx_text(gfx_small, 12, 42, gw_i18n(t_subtitle), C_DIM);
+	char line[96];
+	card_line(line, sizeof line);
+	gfx_text(gfx_small, 12, 42, line[0] ? line : gw_i18n(t_subtitle), C_DIM);
 
 	int y = 62;
 	gfx_round_rect(12, y, GFX_W - 24, 6 * 21 + 10, 8, C_PANEL);
@@ -719,6 +744,21 @@ static bool save_results(void)
 	if (tm) snprintf(date, sizeof date, "%04d-%02d-%02d %02d:%02d", tm->tm_year + 1900, tm->tm_mon + 1,
 	                 tm->tm_mday, tm->tm_hour, tm->tm_min);
 	fprintf(f, "SD Bench %s - %s\n", VERSION_TEXT, date);
+	sd_info_read(&card);	/* free space after the tests */
+	if (card.have_cid) {
+		const char *maker = sd_info_maker(card.mid);
+		fprintf(f, "  Card: %s %s (MID 0x%02X, OEM %s, rev %d.%d, %d-%02d, S/N %08lX)\n",
+		        maker ? maker : "unknown maker", card.pnm, card.mid, card.oid, card.prv >> 4, card.prv & 15,
+		        card.year, card.month, (unsigned long)card.psn);
+	} else {
+		fprintf(f, "  Card: identity not available\n");
+	}
+	fprintf(f, "  Size:");
+	if (card.have_csd) fprintf(f, " card %s GB,", num(card.card_bytes / 1e9, 2).s);
+	if (card.have_volume) fprintf(f, " %s volume %s GB,", sd_info_fs_name(card.fs_type), num(card.volume_bytes / 1e9, 2).s);
+	if (card.have_free) fprintf(f, " free %s GB", num(card.free_bytes / 1e9, 2).s);
+	else if (!card.have_csd && !card.have_volume) fprintf(f, " not available");
+	fprintf(f, "\n");
 	for (int i = 0; i < TEST_COUNT; i++) {
 		const result_t *r = &results[i];
 		if (!r->done) {
@@ -841,6 +881,7 @@ void app_main(uint8_t load_state, uint8_t start_paused, int8_t save_slot)
 #ifdef HOST_BUILD
 	make_dir(ROOT);
 #endif
+	sd_info_read(&card);
 
 	redraw = draw_home;
 	while (1) {

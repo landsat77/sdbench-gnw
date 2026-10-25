@@ -7,6 +7,15 @@ section as the GitHub Release notes.
 
 ## [Unreleased]
 
+## [v1.1.0] - 2026-10-25
+
+### Added
+
+- The card in `/sdbench.txt` (a `Card:` and a `Size:` line per run): maker
+  and product name from the card identity (CID), revision, manufacturing
+  date, serial number, capacity (CSD), file system, volume size and free
+  space. The home screen shows the card (maker, name, size, file system).
+
 ## [v1.0.1] - 2026-10-25
 
 ### Fixed

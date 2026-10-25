@@ -22,7 +22,8 @@ CORE_ENTRY := app_main
 
 CORE_C_SOURCES := \
 src/main.c \
-src/gfx.c
+src/gfx.c \
+src/sdinfo.c
 
 # Relative path so Docker bind-mounts work (do NOT use $(abspath) — it
 # bakes the host path into Make prerequisites / .d files). Do not name
