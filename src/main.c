@@ -54,7 +54,7 @@ uint32_t get_SystemCoreClock(void);
 #define FPS 60
 #define SAMPLE_RATE 16000
 #define AUDIO_LENGTH (SAMPLE_RATE / FPS)
-#define VERSION_TEXT "v1.0.0"
+#define VERSION_TEXT "v1.0.1"
 
 #ifdef HOST_BUILD
 #define ROOT "host_sd"
@@ -224,6 +224,9 @@ static void read_pad(void)
 
 static void background(void)
 {
+	/* lcd_swap() takes effect at the next vblank: until then the "active"
+	 * buffer is still the one on screen (drawing into it flickered). */
+	while (lcd_is_swap_pending()) wdog_refresh();
 	gfx_target(lcd_get_active_buffer());
 	gfx_vgradient(0, 0, GFX_W, GFX_H, C_BG_TOP, C_BG_BOTTOM);
 }
@@ -256,11 +259,29 @@ static int hint(int x, int y, const char *key, const char *label)
 	return x + 14;
 }
 
+/* "12.34": the firmware's printf has no floating point (%f prints nothing). */
+typedef struct { char s[16]; } num_t;
+
+static num_t num(double v, int decimals)
+{
+	static const unsigned long scale[] = { 1, 10, 100, 1000 };
+	num_t n;
+	if (!(v > 0)) v = 0;
+	if (v > 4.0e9 / scale[decimals]) v = 4.0e9 / scale[decimals];
+	unsigned long q = (unsigned long)(v * scale[decimals] + 0.5);
+	unsigned long i = q / scale[decimals], f = q % scale[decimals];
+	if (decimals == 0) snprintf(n.s, sizeof n.s, "%lu", i);
+	else if (decimals == 1) snprintf(n.s, sizeof n.s, "%lu.%lu", i, f);
+	else if (decimals == 2) snprintf(n.s, sizeof n.s, "%lu.%02lu", i, f);
+	else snprintf(n.s, sizeof n.s, "%lu.%03lu", i, f);
+	return n;
+}
+
 static void format_value(char *s, size_t n, const result_t *r, unit_t unit)
 {
-	if (unit == UNIT_MBS) snprintf(s, n, "%.2f %s", r->mbs, gw_i18n(t_mbs));
-	else if (unit == UNIT_IOPS) snprintf(s, n, "%.0f %s", r->ops, gw_i18n(t_iops));
-	else snprintf(s, n, "%.1f %s", r->ops, gw_i18n(t_files_s));
+	if (unit == UNIT_MBS) snprintf(s, n, "%s %s", num(r->mbs, 2).s, gw_i18n(t_mbs));
+	else if (unit == UNIT_IOPS) snprintf(s, n, "%s %s", num(r->ops, 0).s, gw_i18n(t_iops));
+	else snprintf(s, n, "%s %s", num(r->ops, 1).s, gw_i18n(t_files_s));
 }
 
 /* A rounded "nice" maximum for a chart axis. */
@@ -293,10 +314,10 @@ static void chart(int x, int y, int w, int h, const result_t *r, int total, uint
 		int gy = py + ph - ph * g / 4;
 		gfx_dotted_hline(px, gy, pw, C_FAINT, 200);
 		float v = top * g / 4;
-		if (v >= 1000000) snprintf(label, sizeof label, "%.1fM", v / 1000000);
-		else if (v >= 10000) snprintf(label, sizeof label, "%.0fk", v / 1000);
-		else if (v >= 1000) snprintf(label, sizeof label, "%.1fk", v / 1000);
-		else snprintf(label, sizeof label, v >= 10 || v == 0 ? "%.0f" : "%.1f", v);
+		if (v >= 1000000) snprintf(label, sizeof label, "%sM", num(v / 1000000, 1).s);
+		else if (v >= 10000) snprintf(label, sizeof label, "%sk", num(v / 1000, 0).s);
+		else if (v >= 1000) snprintf(label, sizeof label, "%sk", num(v / 1000, 1).s);
+		else snprintf(label, sizeof label, "%s", num(v, v >= 10 || v == 0 ? 0 : 1).s);
 		gfx_text_right(gfx_small, px - 5, gy - 6, label, C_DIM);
 	}
 	if (r->sample_count < 1 || total < 2) return;
@@ -455,7 +476,7 @@ static void draw_results(void)
 			gfx_text(gfx_medium, value_x, y, s, C_TEXT);
 			if (tests[i].unit != UNIT_MBS) {
 				/* the same in MB/s, if there is room */
-				snprintf(s, sizeof s, "· %.2f %s", r->mbs, gw_i18n(t_mbs));
+				snprintf(s, sizeof s, "· %s %s", num(r->mbs, 2).s, gw_i18n(t_mbs));
 				if (nx + 6 + gfx_text_width(gfx_small, s) < value_x - 8)
 					gfx_text(gfx_small, nx + 6, y + 2, s, C_FAINT);
 			}
@@ -542,7 +563,7 @@ static bool step(uint64_t us, uint64_t bytes, float done)
 	run.slice_us = run.slice_bytes = run.slice_ops = 0;
 
 	char s[32];
-	snprintf(s, sizeof s, unit == UNIT_MBS ? "%.2f" : "%.0f", now);
+	snprintf(s, sizeof s, "%s", num(now, unit == UNIT_MBS ? 2 : 0).s);
 	draw_running(run.test, done, s);
 	read_pad();
 	if (pressed(ODROID_INPUT_B)) run.cancelled = true;
@@ -705,12 +726,13 @@ static bool save_results(void)
 			continue;
 		}
 		if (tests[i].unit == UNIT_MBS)
-			fprintf(f, "  %-28s %8.2f MB/s\n", tests[i].log_name, r->mbs);
+			fprintf(f, "  %-28s %8s MB/s\n", tests[i].log_name, num(r->mbs, 2).s);
 		else if (tests[i].unit == UNIT_IOPS)
-			fprintf(f, "  %-28s %8.0f IOPS  %6.2f MB/s  %6.2f ms\n", tests[i].log_name, r->ops, r->mbs,
-			        r->latency_ms);
+			fprintf(f, "  %-28s %8s IOPS  %6s MB/s  %6s ms\n", tests[i].log_name, num(r->ops, 0).s,
+			        num(r->mbs, 2).s, num(r->latency_ms, 2).s);
 		else
-			fprintf(f, "  %-28s %8.1f files/s  %6.2f MB/s\n", tests[i].log_name, r->ops, r->mbs);
+			fprintf(f, "  %-28s %8s files/s  %6s MB/s\n", tests[i].log_name, num(r->ops, 1).s,
+			        num(r->mbs, 2).s);
 	}
 	fprintf(f, "\n");
 	fclose(f);

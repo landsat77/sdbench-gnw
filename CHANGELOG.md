@@ -7,6 +7,16 @@ section as the GitHub Release notes.
 
 ## [Unreleased]
 
+## [v1.0.1] - 2026-10-25
+
+### Fixed
+
+- The numbers were missing on the console (screen and `/sdbench.txt`): the
+  firmware's printf has no floating point, so they are now formatted
+  without it.
+- Flicker at the bottom of the screen (button bar): drawing started before
+  the previous frame was on screen; it now waits for the buffer swap.
+
 ## [v1.0.0] - 2026-10-25
 
 ### Added
