@@ -43,6 +43,7 @@ uint32_t get_SystemCoreClock(void);
 
 #define CMD9  (0x40 + 9)    /* SEND_CSD */
 #define CMD10 (0x40 + 10)   /* SEND_CID */
+#define CMD17 (0x40 + 17)   /* READ_SINGLE_BLOCK */
 
 static uint32_t cycles_per_ms;
 
@@ -116,11 +117,11 @@ static bool wait_ready(void)
 	return false;
 }
 
-/* CMD9 / CMD10: 16 byte register, checked with its own CRC-7. */
-static bool read_register(uint8_t cmd, uint8_t out[16])
+/* A command with a data block: len bytes + the CRC-16 (not checked) into
+ * out[len + 2]. */
+static bool read_block(uint8_t cmd, uint32_t arg, uint8_t *out, uint16_t len)
 {
-	uint8_t frame[6] = { cmd, 0, 0, 0, 0, 0 };
-	uint8_t buf[18];
+	uint8_t frame[6] = { cmd, (uint8_t)(arg >> 24), (uint8_t)(arg >> 16), (uint8_t)(arg >> 8), (uint8_t)arg, 0 };
 	bool ok = false;
 
 	frame[5] = crc7(frame, 5);
@@ -134,15 +135,25 @@ static bool read_register(uint8_t cmd, uint8_t out[16])
 	uint8_t token;
 	do token = rx_byte(); while (token == 0xFF && !expired(start, 200));
 	if (token != 0xFE) goto done;
-	if (!spi_xfer(NULL, buf, sizeof buf)) goto done;	/* 16 bytes + CRC-16 */
-	if (crc7(buf, 15) != buf[15]) goto done;
-	memcpy(out, buf, 16);
-	ok = true;
+	ok = spi_xfer(NULL, out, len + 2);
 done:
 	cs_high();
 	rx_byte();	/* the card releases MISO */
 	return ok;
 }
+
+/* CMD9 / CMD10: 16 byte register, checked with its own CRC-7. */
+static bool read_register(uint8_t cmd, uint8_t out[16])
+{
+	uint8_t buf[18];
+	if (!read_block(cmd, 0, buf, 16)) return false;
+	if (crc7(buf, 15) != buf[15]) return false;
+	memcpy(out, buf, 16);
+	return true;
+}
+
+static bool spi_ok;		/* CID/CSD read: sectors can be read too */
+static bool block_addressing;	/* SDHC/SDXC: CMD17 takes sector numbers */
 
 /* The firmware found the card on SPI1 and left it set up: clock on,
  * master, idle, CS (PB9) an output and high. */
@@ -160,6 +171,7 @@ static void read_card(sd_info_t *info)
 {
 	uint8_t r[16];
 
+	spi_ok = false;
 	if (!spi1_card()) return;
 	cycles_per_ms = get_SystemCoreClock() / 1000;
 	if (cycles_per_ms < 1000) cycles_per_ms = 280000;
@@ -181,14 +193,44 @@ static void read_card(sd_info_t *info)
 			uint32_t c_size = ((uint32_t)(r[7] & 0x3F) << 16) | ((uint32_t)r[8] << 8) | r[9];
 			info->card_bytes = (uint64_t)(c_size + 1) * 512 * 1024;
 			info->have_csd = true;
+			block_addressing = true;
+			spi_ok = true;
 		} else if (structure == 0) {	/* SDSC */
 			uint32_t read_bl_len = r[5] & 15;
 			uint32_t c_size = ((uint32_t)(r[6] & 3) << 10) | ((uint32_t)r[7] << 2) | (r[8] >> 6);
 			uint32_t mult = ((r[9] & 3) << 1) | (r[10] >> 7);
 			info->card_bytes = (uint64_t)(c_size + 1) << (mult + 2 + read_bl_len);
 			info->have_csd = true;
+			block_addressing = false;
+			spi_ok = true;
 		}
 	}
+}
+
+/* exFAT: FatFs only knows the free space after f_getfree() (not on the
+ * ABI), so count the free clusters of the allocation bitmap (one bit per
+ * cluster, ~124 sectors for 16 GB). Read only, like the rest. */
+static bool exfat_free(FATFS *fs, uint32_t *free_clusters)
+{
+	static uint8_t sector[512 + 2] __attribute__((aligned(4)));
+	static const uint8_t ones[16] = { 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4 };
+	uint32_t clusters = fs->n_fatent - 2, used = 0, done = 0;
+	uint32_t lba = (uint32_t)fs->bitbase;
+
+	while (done < clusters) {
+		uint32_t arg = block_addressing ? lba : lba * 512;
+		if (!read_block(CMD17, arg, sector, 512)) return false;
+		for (int i = 0; i < 512 && done < clusters; i++) {
+			uint8_t b = sector[i];
+			uint32_t bits = clusters - done < 8 ? clusters - done : 8;
+			if (bits < 8) b &= (uint8_t)((1u << bits) - 1);
+			used += ones[b & 15] + ones[b >> 4];
+			done += bits;
+		}
+		lba++;
+	}
+	*free_clusters = clusters - used;
+	return true;
 }
 
 static void read_volume(sd_info_t *info)
@@ -204,6 +246,12 @@ static void read_volume(sd_info_t *info)
 		if (fs->free_clst <= fs->n_fatent - 2) {
 			info->free_bytes = (uint64_t)fs->free_clst * cluster;
 			info->have_free = true;
+		} else if (fs->fs_type == FS_EXFAT && spi_ok && spi1_card()) {
+			uint32_t free_clusters;
+			if (exfat_free(fs, &free_clusters)) {
+				info->free_bytes = (uint64_t)free_clusters * cluster;
+				info->have_free = true;
+			}
 		}
 	}
 	f_closedir(&dir);

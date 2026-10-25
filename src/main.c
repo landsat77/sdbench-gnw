@@ -55,7 +55,7 @@ uint32_t get_SystemCoreClock(void);
 #define FPS 60
 #define SAMPLE_RATE 16000
 #define AUDIO_LENGTH (SAMPLE_RATE / FPS)
-#define VERSION_TEXT "v1.1.0"
+#define VERSION_TEXT "v1.1.1"
 
 #ifdef HOST_BUILD
 #define ROOT "host_sd"
@@ -753,12 +753,16 @@ static bool save_results(void)
 	} else {
 		fprintf(f, "  Card: identity not available\n");
 	}
-	fprintf(f, "  Size:");
-	if (card.have_csd) fprintf(f, " card %s GB,", num(card.card_bytes / 1e9, 2).s);
-	if (card.have_volume) fprintf(f, " %s volume %s GB,", sd_info_fs_name(card.fs_type), num(card.volume_bytes / 1e9, 2).s);
-	if (card.have_free) fprintf(f, " free %s GB", num(card.free_bytes / 1e9, 2).s);
-	else if (!card.have_csd && !card.have_volume) fprintf(f, " not available");
-	fprintf(f, "\n");
+	char size[128] = "";
+	size_t l = 0;
+	if (card.have_csd)
+		l += snprintf(size + l, sizeof size - l, ", card %s GB", num(card.card_bytes / 1e9, 2).s);
+	if (card.have_volume)
+		l += snprintf(size + l, sizeof size - l, ", %s volume %s GB", sd_info_fs_name(card.fs_type),
+		              num(card.volume_bytes / 1e9, 2).s);
+	if (card.have_free)
+		l += snprintf(size + l, sizeof size - l, ", free %s GB", num(card.free_bytes / 1e9, 2).s);
+	fprintf(f, "  Size: %s\n", l ? size + 2 : "not available");
 	for (int i = 0; i < TEST_COUNT; i++) {
 		const result_t *r = &results[i];
 		if (!r->done) {

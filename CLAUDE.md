@@ -22,7 +22,8 @@ is the SDK's generic porting guide.
   (user_diskio_spi.c; CS = PB9, CRC-7 on commands, CMD59 is on), only if
   SPI1 is clocked, master, idle and CS high, and only while no file is
   open (startup and before writing the log). Volume size / free space from
-  `f_opendir()` -> `DIR.obj.fs` (FATFS). `SDB_FAKE_CARD=1` on the PC build.
+  `f_opendir()` -> `DIR.obj.fs` (FATFS); exFAT free space (free_clst unknown)
+  counted from the allocation bitmap (`fs->bitbase`, CMD17 sector reads). `SDB_FAKE_CARD=1` on the PC build.
 - The firmware's printf has no floating point: format numbers with `num()`.
 - `lcd_swap()` takes effect at the next vblank: wait for
   `!lcd_is_swap_pending()` before drawing (`background()`).

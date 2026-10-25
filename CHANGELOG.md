@@ -7,6 +7,14 @@ section as the GitHub Release notes.
 
 ## [Unreleased]
 
+## [v1.1.1] - 2026-10-25
+
+### Fixed
+
+- Free space on exFAT cards (the firmware only knows it after a full scan):
+  counted from the allocation bitmap. No more trailing comma on the `Size:`
+  line when a value is missing.
+
 ## [v1.1.0] - 2026-10-25
 
 ### Added
