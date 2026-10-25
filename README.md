@@ -43,19 +43,46 @@ and French).
   system, free space), to compare cards. The maker comes from the card's
   manufacturer ID (an unofficial list; unknown IDs are written as numbers).
   The card identity can only be read when the card is wired to SPI1 (the
-  usual SD mod); the size always comes from the file system. Its format (the numbers here are only an example):
+  usual SD mod); the size always comes from the file system. Sizes are in
+  decimal GB (10^9 bytes, like card makers; Windows shows smaller numbers).
+  A real entry:
 
 ```
-SD Bench v1.1.0 - 2026-10-25 17:00
-  Card: SanDisk SN32G (MID 0x03, OEM SD, rev 8.0, 2023-05, S/N 1234ABCD)
-  Size: card 31.91 GB, exFAT volume 31.90 GB, free 12.35 GB
-  Sequential write 64 KB           0.30 MB/s
-  Sequential read 64 KB            1.35 MB/s
+SD Bench v1.1.1 - 2026-10-25 17:14
+  Card: Panasonic SD16G (MID 0x01, OEM PA, rev 3.0, 2017-11, S/N 013188A0)
+  Size: card 15.50 GB, exFAT volume 15.50 GB, free 12.08 GB
+  Sequential write 64 KB           0.29 MB/s
+  Sequential read 64 KB            1.34 MB/s
   Sequential read 512 B            1.44 MB/s
-  Random read 4 KB                  331 IOPS    1.29 MB/s    3.02 ms
-  Random write 4 KB                  31 IOPS    0.12 MB/s   32.70 ms
-  Small files (create+4 KB)        13.6 files/s    0.05 MB/s
+  Random read 4 KB                  328 IOPS    1.28 MB/s    3.05 ms
+  Random write 4 KB                  31 IOPS    0.12 MB/s   32.77 ms
+  Small files (create+4 KB)        13.5 files/s    0.05 MB/s
 ```
+
+## Results on a Game & Watch
+
+Measured with Retro-Go SD v2.0.0-rc1, SD card on SPI1.
+
+| Test | Panasonic 16 GB (2017) | Netac 32 GB A1 U1 V10 (2026) |
+|---|---|---|
+| Sequential write 64 KB | 0.29 MB/s | 0.43 MB/s |
+| Sequential read 64 KB | 1.34 MB/s | 1.91 MB/s |
+| Sequential read 512 B | 1.44 MB/s | 1.87 MB/s |
+| Random read 4 KB | 328 IOPS (3.1 ms) | 436 IOPS (2.3 ms) |
+| Random write 4 KB | 31 IOPS (33 ms) | 125 IOPS (8 ms) |
+| Small files (create + 4 KB) | 13.5 files/s | 38.2 files/s |
+
+- The Game & Watch talks to the card in SPI mode, one 512-byte sector at a
+  time: reads stay under 2 MB/s whatever the card (the "90 MB/s" on the
+  Netac label needs the 4-bit UHS-I bus). Block size makes no difference;
+  the card's access time does (+40 % for the Netac).
+- A1 cards (application performance class) are much faster at small random
+  writes and at creating files (x4 and x3 here): saves, screenshots.
+- The Netac reports an unassigned maker ID (0xFE, OEM "42"), common for
+  cards built on generic controllers: SD Bench writes it as `unknown maker`.
+
+Send your results (the `/sdbench.txt` entry and the card model) in an issue
+to add them to this table.
 
 Controls: **A** start / start again, **B** cancel / back, **PAUSE/SET**
 Retro-Go menu (on the home and results screens). The texts follow the
